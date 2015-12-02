@@ -1,0 +1,815 @@
+<!-- This set of components only requires base Polymer class and Bootstrap, no Polymer CSS Elements -->
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.css" >
+<link rel="stylesheet" href="../css/bootstrap-theme.min.css" >
+
+
+<script>
+
+    var ONE_DAY = 86400000 ;
+
+    function twoDigit( number)
+    {
+        var stringNum = number.toString() ;
+        if( stringNum.length == 1 ) { stringNum = "0" + stringNum ; }
+        return stringNum;
+    }
+
+    function unSerializeRules( serializedRule )
+    {
+        var ruleWords = serializedRule.split('|');
+        var rulePieces ;
+        var ruleObj = {};
+        for (var ruleCtr = 0; ruleCtr < ruleWords.length; ruleCtr++) {
+            rulePieces = ruleWords[ ruleCtr ].split(":");
+            switch( rulePieces[0].toString() ) {
+                case 'after':
+                case 'before': ruleObj[ rulePieces[0] ] = unixDateToJsTime( rulePieces[1] ); break;
+                default: ruleObj[ rulePieces[0] ] = rulePieces[1] ;
+            }
+        }
+        return ruleObj ;
+    }
+
+    function isNumeric(n) { return !isNaN(parseFloat(n)) && isFinite(n); }
+
+    function getDoubleSelectChoices( newTypeSelected ) {
+        var expectedChoices = 0;
+        var selectData = larapolyDoubleSelectData ;
+
+        // Count the matches so we know how big to make the array
+        $.each( selectData, function (index, value)
+        {
+            if (value['type'] == newTypeSelected) {
+                expectedChoices = expectedChoices + 1;
+            }
+        });
+
+        if( expectedChoices > 0 )
+        {
+            var newCtr = -1;
+            var newArray = new Array( expectedChoices );
+            $.each( selectData, function( index, value )
+            {
+                if( value['type'] == newTypeSelected )
+                {
+                    newCtr = newCtr + 1;
+                    newArray[newCtr] = new Array(2);
+                    newArray[newCtr]['id'] = value['id'];
+                    newArray[newCtr]['name'] = value['name'];
+                    return newArray ;
+                }
+            });
+            return newArray ;
+        }
+        else
+        {
+            this.noType = true ;
+            return new Array();
+        }
+    }
+
+    function unixDateToJsTime( unixDateTime )
+    {
+        var unixWords = unixDateTime.split(' ');
+
+        if ( unixWords.length < 1 ) { return -1 ; }
+        else if( unixWords.length > 2 ) { return -1 ; } // invalid unix date time, not like 2015-10-18 10:00:00 or 2015-10-17
+        else
+        {
+            var datePieces = unixWords[0].split("-");
+
+            if( isNumeric(datePieces[2]) && datePieces[2] > 0 && datePieces[2] < 32 &&
+                isNumeric(datePieces[1]) && datePieces[1] > 0 && datePieces[1] < 13 &&
+                isNumeric(datePieces[0]) && datePieces[0] > 0 && datePieces[0] < 2100  )
+            {
+                var newJSDate = new Date(datePieces[0],(datePieces[1] - 1) ,datePieces[2],0,0,0,0);
+                return newJSDate.getTime();
+            }
+            else
+            {
+                return -1 ;
+            }
+
+        }
+    }
+
+</script>
+
+
+
+<dom-module id="larapoly-date-select" >
+
+    <template>
+        <style>
+            .error_text { color: red; }
+        </style>
+
+        <div class="btn-group">
+
+            <input type="text" class$="[[inputClass]]" placeholder="[[placeholdertext]]" value="[[fancyDate]]" readonly >
+            <input type="hidden" value$="[[unixDate]]" name$="[[name]]" >
+
+            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" >
+                <span class="caret"></span>
+                <span class="sr-only">Toggle Dropdown</span>
+            </button>
+
+            <ul class="dropdown-menu">
+                                                              <li><a on-click=newDate param="none">No Date / Clear</a></li>
+                <template is="dom-if" if="[[min]]">           <li><a on-click=newDate param="min">[[minDate]]</a></li> </template>
+                <template is="dom-if" if="[[allowToday]]">    <li><a on-click=newDate param="today">Today</a></li> </template>
+                <template is="dom-if" if="[[max]]">           <li><a on-click=newDate param="max">[[maxDate]]</a></li> </template>
+                                                              <li role="separator" class="divider"></li>
+
+                <template is="dom-if" if="[[allowPlus1]]">   <li><a on-click=addDay param="1">Plus 1 Day</a></li> </template>
+                <template is="dom-if" if="[[allowPlus7]]">   <li><a on-click=addDay param="7">Plus 1 Week</a></li> </template>
+                <template is="dom-if" if="[[allowPlus31]]">  <li><a on-click=addDay param="31">Plus 1 Month</a></li> </template>
+                <template is="dom-if" if="[[allowPlus365]]"> <li><a on-click=addDay param="365">Plus 1 Year</a></li> </template>
+
+                <template is="dom-if" if="[[allowMinus1]]">   <li><a on-click=addDay param="-1">Minus 1 Day</a></li> </template>
+                <template is="dom-if" if="[[allowMinus7]]">   <li><a on-click=addDay param="-7">Minus 1 Week</a></li> </template>
+                <template is="dom-if" if="[[allowMinus31]]">  <li><a on-click=addDay param="-31">Minus 1 Month</a></li> </template>
+                <template is="dom-if" if="[[allowMinus365]]"> <li><a on-click=addDay param="-365">Minus 1 Year</a></li> </template>
+            </ul>
+        </div>
+    </template>
+    <script>
+        Polymer({
+
+            is: "larapoly-date-select",
+
+            properties: {
+                fancyDate: { type: String, value: 'Tuesday Feb 30, 2025' },
+                jsTimeStamp: { type: String },
+                unixDate: { type: String},
+                name: { type: String },
+                value: { type: String },
+                placeholdertext: { type: String, value: 'No Date Set' },
+                placeholder: { type: String },
+                jsDateObj: { type: Date },
+                rules: { type: String },
+                min: { type: Number, value: 0 },
+                minDate: { type: String },
+                max: { type: Number, value: 1892160000000 },
+                maxDate: { type: String },
+                inputClass: { type: String, value: "btn btn-default btn-input" },
+                allowToday: { type: Boolean, value: true },
+                allowMinus1: { type: Boolean, value: true },
+                allowMinus7: { type: Boolean, value: true },
+                allowMinus31: { type: Boolean, value: true },
+                allowPlus1: { type: Boolean, value: true },
+                allowPlus7: { type: Boolean, value: true },
+                allowPlus31: { type: Boolean, value: true },
+                allowPlus365: { type: Boolean, value: true }
+            },
+            ready: function() {
+
+                // Is there a unix value already
+                if( this.value.length > 0 )
+                {
+                    this.jsDateObj = new Date( unixDateToJsTime( this.value ));
+                    this.fancyDate = this.jsDateObj.toDateString();
+                    this.jsTimeStamp = this.jsDateObj.getTime();
+                    //this.unixDate = this.value ;
+                    //this.unixDate = this.jsDateObj.getFullYear() +'-'+ twoDigit( this.jsDateObj.getMonth() + 1) +'-'+ twoDigit(this.jsDateObj.getDate()) ;
+                    this.setUnixDate();
+                }
+
+                this.placeholdertext = this.placeholder ;
+                this.name = this.name ;
+
+                // import Laravel validation rules
+                if( this.rules != null && this.rules != '' ) {
+                    var rulesObj = unSerializeRules(this.rules);
+
+                    if( rulesObj.before != [undefined] ) {
+                        this.max = rulesObj.before ;
+                        var newDate = new Date( this.max );
+                        this.maxDate = newDate.toDateString() + ' (latest)';
+                    }
+
+                    if( rulesObj.after != [undefined] ) {
+                        this.min = rulesObj.after ;
+                        var newDate = new Date( this.min );
+                        this.minDate = newDate.toDateString() + ' (earliest)';
+                    }
+                }
+
+                // which drop downs are not valid to display
+                todayObj = new Date();
+                if( this.min > 0 && todayObj.getTime() < this.min ) { this.allowToday = false ; }
+                if( this.max > 0 && todayObj.getTime() > this.max ) { this.allowToday = false ; }
+
+                this.refreshDropDown();
+                this.validateDate();
+                $('.dropdown-toggle').dropdown();
+            },
+            newDate: function () {
+                if(typeof event.target.attributes['param'] !== 'undefined')
+                {
+                    var dateChange = String(event.target.attributes['param'].value);
+                }
+                else
+                {
+                    return ;
+                }
+
+                if( dateChange == 'min' )
+                {
+                    this.jsDateObj = new Date( this.min );
+                    this.fancyDate = this.jsDateObj.toDateString() ;
+                    this.jsTimeStamp = this.jsDateObj.getTime();
+                    this.setUnixDate();
+                }
+                else if( dateChange == 'max' )
+                {
+                    this.jsDateObj = new Date( this.max );
+                    this.fancyDate = this.jsDateObj.toDateString() ;
+                    this.jsTimeStamp = this.jsDateObj.getTime();
+                    this.setUnixDate();
+                }
+                else if( dateChange == 'today' )
+                {
+                    this.jsDateObj = new Date();
+                    this.fancyDate = this.jsDateObj.toDateString() ;
+                    this.jsTimeStamp = this.jsDateObj.getTime();
+                    this.setUnixDate();
+                }
+                else
+                {
+                    this.jsDateObj = null ;
+                    this.fancyDate = '' ;
+                    this.jsTimeStamp = 0 ;
+                    this.unixDate = '';
+                }
+
+                this.refreshDropDown();
+                this.validateDate();
+            },
+            addDay: function () {
+                if(typeof event.target.attributes['param'] !== 'undefined')
+                {
+                    var days = Number(event.target.attributes['param'].value) ;
+                    var dayShift = days * ONE_DAY;
+                    if( this.jsDateObj.getMonth() == 5 && days == 31 )
+                    {
+                        dayShift = dayShift - ONE_DAY ;
+                    }
+                    this.jsTimeStamp = this.jsTimeStamp + ( dayShift ) ;
+                    this.jsDateObj = new Date( this.jsTimeStamp );
+                    this.fancyDate = this.jsDateObj.toDateString() ;
+
+                    this.refreshDropDown();
+                    this.validateDate();
+                }
+                else
+                {
+                    return ;
+                }
+            },
+            setUnixDate: function () { this.unixDate = this.jsDateObj.getFullYear() +'-'+ twoDigit( this.jsDateObj.getMonth() + 1) +'-'+ twoDigit(this.jsDateObj.getDate()) ; },
+            validateDate: function () {
+                if( this.min > this.jsTimeStamp ) {
+                    console.log('date is too old');
+                    this.inputClass = "btn btn-default btn-input error_text";
+                }
+                else if ( this.max < this.jsTimeStamp ) {
+                    console.log('date is too old');
+                    this.inputClass = "btn btn-default btn-input error_text";
+                }
+                else {
+                    console.log('date is ok');
+                    this.inputClass = "btn btn-default btn-input";
+                }
+            },
+            refreshDropDown: function () {
+                this.allowMinus365 = true ; this.allowMinus31 = true ; this.allowMinus7 = true ; this.allowMinus1 = true ;
+                this.allowPlus365 = true ;  this.allowPlus31 = true ;  this.allowPlus7 = true ;  this.allowPlus1 = true ;
+
+                if( this.jsTimeStamp > 0 && this.min > 0 ) {
+                    if( ( this.jsTimeStamp - ONE_DAY ) < this.min ) {
+                        this.allowMinus1 = false ; this.allowMinus7 = false ; this.allowMinus31 = false ; this.allowMinus365 = false ;
+                    }
+                    else if( ( this.jsTimeStamp - ( ONE_DAY * 7 )) < this.min ) {
+                        this.allowMinus7 = false ; this.allowMinus31 = false ; this.allowMinus365 = false ;
+                    }
+                    else if( ( this.jsTimeStamp - ( ONE_DAY * 31 )) < this.min ) {
+                        this.allowMinus31 = false ; this.allowMinus365 = false ;
+                    }
+                    else if( ( this.jsTimeStamp - ( ONE_DAY * 365 )) < this.min ) {
+                        this.allowMinus365 = false ;
+                    }
+                }
+
+                if( this.jsTimeStamp > 0 && this.max > 0 ) {
+                    console.log( ( this.jsTimeStamp + ONE_DAY ) + ' is greater than ' + this.max );
+                    if( ( this.jsTimeStamp + ONE_DAY ) > this.max ) {
+                        this.allowPlus1 = false ; this.allowPlus7 = false ; this.allowPlus31 = false ; this.allowPlus365 = false ;
+                    }
+                    else if( ( this.jsTimeStamp + ( ONE_DAY * 7 )) > this.max ) {
+                        this.allowPlus7 = false ; this.allowPlus31 = false ; this.allowPlus365 = false ;
+                    }
+                    else if( ( this.jsTimeStamp + ( ONE_DAY * 30 )) > this.max && this.jsDateObj.getMonth() == 5 ) {
+                        this.allowPlus31 = false ; this.allowPlus365 = false ;
+                    }
+                    else if( ( this.jsTimeStamp + ( ONE_DAY * 31 )) > this.max && this.jsDateObj.getMonth() != 5 ) {
+                        this.allowPlus31 = false ; this.allowPlus365 = false ;
+                    }                    else if( ( this.jsTimeStamp + ( ONE_DAY * 365 )) > this.max ) {
+                        this.allowPlus365 = false ;
+                    }
+                }
+            }
+        });
+    </script>
+</dom-module>
+
+
+
+<dom-module id="larapoly-double-select">
+
+    <template>
+        <style>
+            .btn-group>.btn:first-child:not(:last-child):not(.dropdown-toggle) {
+                color: #555 !important;
+                background-image: none ;
+                background: white !important;
+            }
+            .form-inline > label { width: 6em; text-align: right; }
+            .form > label { width: 6em; text-align: right; }
+        </style>
+
+        <template is="dom-if" if="[[label]]">
+            <label class="control-label" >{{label}}</label>
+            <br>
+        </template>
+
+        <div class="btn-group">
+
+            <input type="text" class="btn btn-default btn-input" placeholder="[[placeholdertext]]" value="[[selectedname]]" readonly >
+            <input type="hidden" value$="[[selectedid]]" name$="[[name]]" >
+
+            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" >
+                <span class="caret"></span>
+                <span class="sr-only">Toggle Dropdown</span>
+            </button>
+
+                <ul class="dropdown-menu">
+
+                    <template is="dom-repeat" items="[[itemChoices]]">
+                        <li><a on-click=newselection id="{{item.id}}" >{{item.name}}</a></li>
+                    </template>
+
+                    <template is="dom-if" if="[[selectedType]]">
+                        <li role="separator" class="divider"></li>
+                        <li><a on-click=newtype data-type="none">Change from <b>{{selectedType}}</b> to ...</a></li>
+                    </template>
+
+                    <template is="dom-if" if="[[noType]]">
+                        <template is="dom-repeat" items="[[typeChoices]]">
+                            <li><a on-click=newtype data-type$="[[item]]">[[item]]</a></li>
+                        </template>
+                    </template>
+
+                </ul>
+        </div>
+
+    </template>
+    <script>
+        Polymer({
+
+            is: "larapoly-double-select",
+
+            properties: {
+                // Input fields
+                name:            { type: String },
+                value:           { type: String },
+                label:           { type: String },
+                typename:        { type: String },
+                selectData:      { type: Array },
+
+                // Drop down data
+                selectedType:    { type: String },
+                typeChoices:     { type: Array },
+                itemChoices:     { type: Array },
+
+                // Output fields
+                selectedname:    { type: String },
+                selectedid:      { type: String },
+                placeholdertext: { type: String },
+
+                // script logic fields
+                noType:          { type: Boolean, value: true },
+                noSelection:     { type: Boolean, value: false }
+
+            },
+
+            ready: function() {
+
+                this.selectData = larapolyDoubleSelectData ;
+
+                // Has the Select Types been populated with data yet? Do this once for all occurrences of this wc
+                if( larapolyDoubleSelectTypes.length == 0 && larapolyDoubleSelectData.length > 0 )
+                {
+                    var typePos ;
+                    var typeWord ;
+                    var typeString = ':';
+                    $.each(this.selectData, function( index, value )
+                    {
+                        typeWord = ":" + value['type'] + ":";
+
+                        typePos = typeString.search( typeWord );
+                        if( typePos == -1 ) { typeString = typeString + value['type'] + ":"; }
+                    });
+                    typeString = typeString.substr( 1, typeString.length - 2 );
+                    larapolyDoubleSelectTypes = typeString.split(":");
+                    larapolyDoubleSelectTypes.sort();
+                }
+
+                // Get the type data from the parent page
+                this.typeChoices = larapolyDoubleSelectTypes;
+                this.placeholdertext = 'Choose a '+ this.typename + ' Type.';
+
+                // Is there an id value in the wc tag? and valid ?
+                if( this.value > 0 )
+                {
+                    this.selectedid = this.value;
+                    var idIndex = this.value ;
+                    var newId = 0;
+                    var newName = '';
+                    var newType = '';
+                    $.each(this.selectData, function( index, value )
+                    {
+                        // match the id to our data
+                        if( idIndex == value['id'] )
+                        {
+                            newId = value['id'];
+                            newName = value['name'];
+                            newType = value['type'];
+                        }
+                    });
+
+                    // set our output fields to the valid match
+                    if( newId > 0 )
+                    {
+                        this.selectedid = newId ;
+                        this.selectedname = newName ;
+                        this.typeName = newType ;
+                        this.selectedType = newType ;
+                        this.typeChoices = larapolyDoubleSelectTypes ;
+                        this.noType = false ;
+                        this.itemChoices = getDoubleSelectChoices( newType ) ;
+                        var newTypeSelected = newType ;
+                    }
+                }
+
+                // Activate the bs drop down for the user
+                $('.dropdown-toggle').dropdown();
+                return true;
+            },
+
+            newselection: function () {
+                if(typeof event.target.attributes['id'] !== 'undefined')
+                {
+                    var newId = Number(event.target.attributes['id'].value);
+                    var newName = 'processing!';
+                }
+                else
+                {
+                    var newId = 0;
+                    var newName = 'Choose a ' + this.typename ;
+                }
+
+                $.each(this.selectData, function( index, value )
+                {
+                    if( value['id'] == newId )
+                    {
+                        newName =  value['name'];
+                    }
+                });
+
+                this.placeholdertext = newName ;
+                this.selectedname = newName ;
+                this.selectedid   = newId ;
+
+            },
+
+            newtype: function() {
+
+                // Type changed so empty the field
+                this.selectedname = '' ;
+                this.selectedid   = '' ;
+
+                if(typeof event.target.attributes['data-type'] !== 'undefined')
+                {
+                    var newTypeSelected = String(event.target.attributes['data-type'].value);
+                    this.placeholdertext = 'Choose a '+ this.typename ;
+                }
+                else
+                {
+                    var newTypeSelected = 'none';
+                }
+
+                if( newTypeSelected == 'none' )
+                {
+                    var newTypeSelected = 'none';
+                    this.noType = true ;
+                    this.itemChoices = new Array();
+                    this.selectedType = '';
+                    this.placeholdertext = 'Choose a '+ this.typename + ' Type.';
+                    return ;
+                }
+
+                // Item selected, now be prepared for edits
+                this.selectedType = newTypeSelected ;
+                this.itemChoices = getDoubleSelectChoices( newTypeSelected ) ;
+                if( newTypeSelected.length > 0 )
+                {
+                    this.noType = false ;
+                }
+                else
+                {
+                    this.noType = true ;
+                }
+            }
+        });
+
+    </script>
+
+</dom-module>
+
+
+<dom-module id="larapoly-alert" >
+
+    <template>
+        <div class$="[[class]]" role="alert">
+            <span>{{message}}</span>
+        </div>
+    </template>
+
+    <script>
+        Polymer({ is: "larapoly-alert",
+            properties: {
+                message:        { type: String },
+                class:          { type: String },
+                messagetype:    { type: String },
+            },
+            ready: function() {
+                if( this.messagetype == 'success' )      { this.class = "alert alert-info"; }
+                else if( this.messagetype == 'error' )   { this.class = "alert alert-danger" }
+                else if( this.messagetype == 'warning' ) { this.class = "alert alert-warning" }
+            }
+        });
+
+    </script>
+</dom-module>
+
+
+<dom-module id="larapoly-string">
+
+    <template>
+        <template is="dom-if" if="[[isDefault]]">
+            <div class$="{{formGroupClass}}">
+                <label class="control-label" for="inputError1">{{validationMessage}}</label>
+                <input type="text" class="form-control" id="inputError1" value="{{message::input}}" placeholder="{{label}}" on-keyup="messageChanged">
+            </div>
+        </template>
+
+        <template is="dom-if" if="[[isInline]]">
+            <style>
+                #basic-addon2a { width: 6em; text-align: right; }
+                .input-group > input { width: 10em; }
+            </style>
+
+            <div class$="{{inputGroupClass}}">
+                <!-- use the ::input extension to Bind this native html input field to our web component -->
+                <input type="text" id="message" name="{{name}}"      value="{{message::input}}"
+                       placeholder="{{label}}"  class="form-control" on-keyup="messageChanged"
+                       aria-describedby="basic-addon2" />
+                <span class="input-group-addon" id="basic-addon2a" >{{validationMessage}}</span>
+            </div>
+        </template>
+
+    </template>
+
+    <script>
+        Polymer({ is: "larapoly-string",
+
+            properties: {
+                message:           { type: String },
+                validationMessage: { type: String, value: "" },
+                rules:             { type: String },
+                formGroupClass:    { type: String, value: "form-group" },
+                inputGroupClass:   { type: String, value: "input-group" },
+                label:             { type: String },
+                value:             { type: String },
+                min:               { type: String },
+                max:               { type: String },
+                fclass:            { type: String, value: 'default' },
+                isInline:          { type: Boolean, value: false },
+                isDefault:         { type: Boolean, value: true },
+            },
+
+            messageChanged: function() {
+                var trimmedMessage = this.message.trim();
+                if (this.isDefault && (trimmedMessage.length < this.min || trimmedMessage.length > this.max ))
+                {
+                    this.validationMessage = 'Must be between ' + this.min + ' and ' + this.max + ' characters.';
+                    this.formGroupClass = "form-group has-error";
+                }
+                else if( this.isDefault )
+                {
+                    this.validationMessage = this.label;
+                    this.formGroupClass = "form-group";
+                }
+                else if ( this.isInline && trimmedMessage.length < this.min)
+                {
+                    this.validationMessage = this.min + ' min.';
+                    this.inputGroupClass = "input-group has-error";
+                }
+                else if( this.isInline && trimmedMessage.length > this.max )
+                {
+                    this.validationMessage = this.max + ' max.';
+                    this.inputGroupClass = "input-group has-error";
+                }
+                else if( this.isInline )
+                {
+                    this.validationMessage = '';
+                    this.inputGroupClass = "input-group";
+                }
+            },
+
+            ready: function ()
+            {
+                this.message = this.value;
+                this.validationMessage = this.label;
+
+                if( this.fclass.length > 0 )
+                {
+                    switch( this.fclass )
+                    {
+                        case 'inline': this.isInline = true ; this.isDefault = false ; break ;
+                        default: this.isInline = false ; this.isDefault = true ;
+                    }
+                }
+
+                // import Laravel validation rules
+                if( this.rules != null && this.rules != '' )
+                {
+                    var rulesObj = unSerializeRules(this.rules);
+                    if( rulesObj.max != [undefined] ) { this.max = rulesObj.max ; }
+                    if( rulesObj.min != [undefined] ) { this.min = rulesObj.min ; }
+                }
+            }
+        });
+    </script>
+</dom-module>
+
+
+<dom-module id="larapoly-dec-to-frac" >
+    <template>
+
+        <template is="dom-if" if="[[isDefault]]">
+            <style>
+                .form-inline > label { width: 6em; text-align: right; }
+                .form > label { width: 6em; text-align: right; }
+                .form-group > div > input { width: 7em; }
+                .form-group > div > .input-group-addon { width: 7em; }
+            </style>
+            <div class="form-group">
+                <label for="userstring2" class="hidden-xs">{{label}}</label>
+                <div class$="{{statusColor}}">
+                    <!-- use the ::input extension to Bind this native html input field -->
+                    <input type="text" id="userstring2"
+                           name="{{name}}"
+                           value="{{userstring::input}}"
+                           class="form-control"
+                           on-keyup="userstringChanged"
+                           aria-describedby="basic-addon2"
+                            />
+                    <span class="input-group-addon" id="basic-addon2" >{{fifdimension}}</span>
+                </div>
+            </div>
+        </template>
+
+        <template is="dom-if" if="[[isInline]]">
+            <div class="form-group">
+                <label for="userstring3" class="hidden-xs">{{label}}</label>
+                <div class$="{{statusColor}}">
+                    <!-- use the ::input extension to Bind this native html input field -->
+                    <input type="text" id="userstring3"
+                           name="{{name}}"
+                           value="{{userstring::input}}"
+                           class="form-control"
+                           on-keyup="userstringChanged"
+                           aria-describedby="basic-addon3"
+                            />
+                    <span class="input-group-addon" id="basic-addon3" >{{fifdimension}}</span>
+                </div>
+            </div>
+        </template>
+
+        <template is="dom-if" if="[[isRO]]">
+            <style>
+                .larapoly-dec-to-frac-ro > input { background: white; width: 7em; }
+            </style>
+            <div class="form-group larapoly-dec-to-frac-ro" >
+                <input value="{{fifdimension}}" class="form-control" readonly>
+            </div>
+        </template>
+
+        <template is="dom-if" if="[[isNaked]]">
+            <span>{{fifdimension}}</span>
+        </template>
+
+    </template>
+
+    <script>
+        Polymer({ is: "larapoly-dec-to-frac",
+
+            properties: {
+                userstring:  { type: String },
+                value:       { type: String, value: "0" },
+                name:        { type: String, value: "undefined" },
+                label:       { type: String },
+                isValid:     { type: Boolean, value: true },
+                statusColor: { type: String, value: "input-group" },
+
+                fclass:   { type: String, value: 'default' },
+                isDefault:{ type: Boolean, value: true },
+                isRO:     { type: Boolean, value: false },
+                isInline: { type: Boolean, value: false },
+                isNaked:  { type: Boolean, value: false }
+            },
+            ready: function() {
+                this.userstring = this.value;
+                this.userstringChanged();
+                this.fclass = this.fclass ;
+
+                if( this.fclass.length > 0 )
+                {
+                    this.isDefault = false; this.isInline = false ; this.isRO = false ; this.isNaked = false ;
+                    switch( this.fclass )
+                    {
+                        case 'inline': this.isInline = true ; break ;
+                        case 'ro'    : this.isRO     = true ; break ;
+                        case 'naked' : this.isNaked  = true ; break ;
+                        default      : this.isDefault = true ;
+                    }
+                }
+            },
+            fifreset: function() {
+                this.userstring = '';
+                this.fifdimension = '0"';
+            },
+            userstringChanged: function() {
+                var someString = this.userstring ;
+                var feet = 0;
+                var inches = 0;
+                var denominator = 64 ;
+                var numerator = 0;
+
+                if( isNumeric( someString ) )
+                {
+                    someString = Math.round( someString * 64 ) / 64 ;
+                    feet = Math.floor( someString / 12 );
+                    inch = Math.floor( someString - ( feet * 12 )) ;
+                    numerator = Math.round(( someString - ( feet * 12 ) - inch ) * denominator );
+
+                    for( denom = denominator; denom > 1 && ( numerator % 2 ) == 0 && numerator >= 1 ; denom--  )
+                    {
+                        numerator = numerator / 2 ;
+                        denominator = denominator / 2 ;
+                    }
+
+                    if( feet > 0 )
+                    {
+                        this.fifdimension = feet + "'-" + inch ;
+                    }
+                    else
+                    {
+                        this.fifdimension = inch ;
+                    }
+
+                    if( numerator > 0 )
+                    {
+                        this.fifdimension = this.fifdimension + '-' + numerator + '/' + denominator + '"';
+                    }
+                    else
+                    {
+                        this.fifdimension = this.fifdimension + '"'
+                    }
+                    this.isValid = true ;
+                    this.statusColor = "input-group";
+                }
+                else
+                {
+                    this.fifdimension = 'Invalid';
+                    this.isValid = false;
+                    this.statusColor = "input-group has-error";
+                }
+            }
+        });
+    </script>
+
+</dom-module>
