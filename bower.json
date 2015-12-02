@@ -1,0 +1,22 @@
+{
+  "name": "larapoly",
+  "version": "0.3.00",
+  "main": "larapoly.html",
+  "license": "https://github.com/larapoly/LICENSE",
+  "ignore": ["/.*","/test/"],
+  "authors": [
+    "Kelly Taylor"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/larapoly/larapoly.git"
+  },
+  "dependencies": {
+    "webcomponentsjs": "^0.7.18",
+    "polymer": "^0.1.00"
+  },
+  "devDependencies": {
+    "web-component-tester": "*"
+  },
+  "private": false
+}
