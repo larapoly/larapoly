@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "webcomponentsjs": "^0.7.18",
-    "polymer": "^0.1.00"
+    "polymer": "^0.1.*"
   },
   "devDependencies": {
     "web-component-tester": "*"
