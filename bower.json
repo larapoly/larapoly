@@ -2,6 +2,7 @@
   "name": "larapoly",
   "version": "0.3.00",
   "main": "larapoly.html",
+  "keywords": ["Laravel","Polymer","Web Components"],
   "license": "https://github.com/larapoly/LICENSE",
   "ignore": ["/.*","/test/"],
   "authors": [
